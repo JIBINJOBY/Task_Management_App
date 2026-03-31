@@ -55,6 +55,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final allTasks = tasksAsync.asData?.value ?? const <Task>[];
     final searchQuery = ref.watch(rawSearchQueryProvider);
     final selectedFilter = ref.watch(filterStatusProvider);
+    final selectedSpecial = ref.watch(filterSpecialProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -102,6 +103,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     onChanged: (value) => ref.read(filterStatusProvider.notifier).set(value),
                   ),
                 ),
+                const SizedBox(width: 10),
+                SizedBox(
+                  width: 180,
+                  child: DropdownButtonFormField<SpecialFilter>(
+                    initialValue: selectedSpecial,
+                    decoration: const InputDecoration(labelText: 'Completion'),
+                    items: const [
+                      DropdownMenuItem(value: SpecialFilter.all, child: Text('All')),
+                      DropdownMenuItem(
+                        value: SpecialFilter.notCompleted,
+                        child: Text('Not Completed'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        ref.read(filterSpecialProvider.notifier).set(value);
+                      }
+                    },
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 14),
@@ -119,7 +140,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     separatorBuilder: (_, _) => const SizedBox(height: 10),
                     itemBuilder: (context, index) {
                       final task = visibleTasks[index];
-                      final blocked = isTaskBlocked(task, allTasks);
+                      final blockedByDependency = isTaskBlocked(task, allTasks);
+                      final blockedByTime = isTimeWindowBlocked(task, allTasks);
+                      final blocked = blockedByDependency || blockedByTime;
                       final blocker = task.blockedByTaskId == null
                           ? null
                           : allTasks.cast<Task?>().firstWhere(
@@ -133,6 +156,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           key: ValueKey(task.id),
                           task: task,
                           blocked: blocked,
+                          blockedByTime: blockedByTime,
                           blockedByTitle: blocker?.title,
                           searchQuery: searchQuery,
                           onTap: () => _openForm(task: task),

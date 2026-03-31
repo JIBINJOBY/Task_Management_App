@@ -9,6 +9,7 @@ class TaskCard extends StatelessWidget {
     super.key,
     required this.task,
     required this.blocked,
+    required this.blockedByTime,
     required this.blockedByTitle,
     required this.searchQuery,
     required this.onTap,
@@ -19,6 +20,7 @@ class TaskCard extends StatelessWidget {
 
   final Task task;
   final bool blocked;
+  final bool blockedByTime;
   final String? blockedByTitle;
   final String searchQuery;
   final VoidCallback onTap;
@@ -100,7 +102,9 @@ class TaskCard extends StatelessWidget {
                     ),
                     if (blocked)
                       _ChipLabel(
-                        label: blockedByTitle == null ? 'Blocked' : 'Blocked by $blockedByTitle',
+                        label: blockedByTime
+                            ? 'Blocked by Time Overlap'
+                            : (blockedByTitle == null ? 'Blocked' : 'Blocked by $blockedByTitle'),
                         textColor: Colors.grey.shade800,
                         background: Colors.grey.shade300,
                         icon: Icons.lock_rounded,

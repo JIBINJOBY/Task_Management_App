@@ -31,7 +31,8 @@ class TaskNotifier extends AsyncNotifier<List<Task>> {
   Future<void> createTask({
     required String title,
     required String description,
-    required DateTime dueDate,
+    required DateTime startDateTime,
+    required DateTime endDateTime,
     required TaskStatus status,
     String? blockedByTaskId,
   }) async {
@@ -40,7 +41,9 @@ class TaskNotifier extends AsyncNotifier<List<Task>> {
       id: const Uuid().v4(),
       title: title,
       description: description,
-      dueDate: dueDate,
+      dueDate: endDateTime,
+      startDateTime: startDateTime,
+      endDateTime: endDateTime,
       status: status,
       blockedByTaskId: blockedByTaskId,
     );
@@ -66,18 +69,14 @@ class TaskNotifier extends AsyncNotifier<List<Task>> {
     }
 
     final now = DateTime.now();
-    final blockedLookup = {for (final task in current) task.id: task};
     final updates = <Task>[];
 
     for (final task in current) {
-      if (task.status != TaskStatus.todo || task.dueDate.isAfter(now)) {
+      if (task.status != TaskStatus.todo || task.startDateTime.isAfter(now)) {
         continue;
       }
 
-      final blockerId = task.blockedByTaskId;
-      final blocker = blockerId == null ? null : blockedLookup[blockerId];
-      final isBlocked = blocker != null && blocker.status != TaskStatus.done;
-      if (isBlocked) {
+      if (isTaskBlocked(task, current) || isTimeWindowBlocked(task, current)) {
         continue;
       }
 
@@ -124,13 +123,35 @@ class DebouncedSearchQueryNotifier extends Notifier<String> {
   void set(String value) => state = value;
 }
 
+enum SpecialFilter { all, notCompleted }
+
+final filterSpecialProvider =
+    NotifierProvider<SpecialFilterNotifier, SpecialFilter>(SpecialFilterNotifier.new);
+
+class SpecialFilterNotifier extends Notifier<SpecialFilter> {
+  @override
+  SpecialFilter build() => SpecialFilter.all;
+
+  void set(SpecialFilter value) => state = value;
+}
+
 final visibleTasksProvider = Provider<List<Task>>((ref) {
   final tasksAsync = ref.watch(allTasksProvider);
   final statusFilter = ref.watch(filterStatusProvider);
+  final specialFilter = ref.watch(filterSpecialProvider);
   final query = ref.watch(debouncedSearchQueryProvider).trim().toLowerCase();
 
   final tasks = tasksAsync.asData?.value ?? const <Task>[];
+  final now = DateTime.now();
+
   return tasks.where((task) {
+    if (specialFilter == SpecialFilter.notCompleted) {
+      final overdueNotDone = task.status != TaskStatus.done && task.endDateTime.isBefore(now);
+      if (!overdueNotDone) {
+        return false;
+      }
+    }
+
     final statusMatch = statusFilter == null || task.status == statusFilter;
     final searchMatch = query.isEmpty || task.title.toLowerCase().contains(query);
     return statusMatch && searchMatch;
@@ -172,4 +193,25 @@ bool isTaskBlocked(Task task, List<Task> tasks) {
   }
 
   return blocker.status != TaskStatus.done;
+}
+
+bool isTimeWindowBlocked(Task task, List<Task> tasks) {
+  for (final other in tasks) {
+    if (other.id == task.id || other.status == TaskStatus.done) {
+      continue;
+    }
+
+    final overlap =
+        task.startDateTime.isBefore(other.endDateTime) && task.endDateTime.isAfter(other.startDateTime);
+    if (!overlap) {
+      continue;
+    }
+
+    final otherHasPriority = other.startDateTime.isBefore(task.startDateTime) ||
+        (other.startDateTime.isAtSameMomentAs(task.startDateTime) && other.id.compareTo(task.id) < 0);
+    if (otherHasPriority) {
+      return true;
+    }
+  }
+  return false;
 }

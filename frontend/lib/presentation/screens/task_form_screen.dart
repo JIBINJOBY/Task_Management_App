@@ -21,7 +21,8 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
 
-  DateTime? _dueDate;
+  DateTime? _startDateTime;
+  DateTime? _endDateTime;
   TaskStatus _status = TaskStatus.todo;
   String? _blockedByTaskId;
   bool _isSaving = false;
@@ -33,7 +34,8 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
       final task = widget.editingTask!;
       _titleController.text = task.title;
       _descriptionController.text = task.description;
-      _dueDate = task.dueDate;
+      _startDateTime = task.startDateTime;
+      _endDateTime = task.endDateTime;
       _status = task.status;
       _blockedByTaskId = task.blockedByTaskId;
     } else {
@@ -41,7 +43,8 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
       if (draft != null) {
         _titleController.text = draft.title;
         _descriptionController.text = draft.description;
-        _dueDate = draft.dueDate;
+        _startDateTime = draft.startDateTime;
+        _endDateTime = draft.endDateTime;
         _status = draft.status;
         _blockedByTaskId = draft.blockedByTaskId;
       }
@@ -68,7 +71,8 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
     final draft = TaskDraft(
       title: _titleController.text,
       description: _descriptionController.text,
-      dueDate: _dueDate,
+      startDateTime: _startDateTime,
+      endDateTime: _endDateTime,
       status: _status,
       blockedByTaskId: _blockedByTaskId,
     );
@@ -76,19 +80,20 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
     ref.read(taskDraftProvider.notifier).saveDraft(draft);
   }
 
-  Future<void> _pickDueDate() async {
+  Future<void> _pickStartDate() async {
     final now = DateTime.now();
+    final current = _startDateTime ?? now;
     final selected = await showDatePicker(
       context: context,
       firstDate: DateTime(now.year - 1),
       lastDate: DateTime(now.year + 20),
-      initialDate: _dueDate ?? now,
+      initialDate: current,
     );
 
     if (selected != null) {
-      final existing = _dueDate ?? DateTime.now();
+      final existing = _startDateTime ?? DateTime.now();
       setState(() {
-        _dueDate = DateTime(
+        _startDateTime = DateTime(
           selected.year,
           selected.month,
           selected.day,
@@ -96,21 +101,22 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
           existing.minute,
         );
       });
+      _normalizeEndAfterStart();
       _persistDraft();
     }
   }
 
-  Future<void> _pickDueTime() async {
-    final initial = _dueDate ?? DateTime.now();
+  Future<void> _pickStartTime() async {
+    final initial = _startDateTime ?? DateTime.now();
     final selected = await showTimePicker(
       context: context,
       initialTime: TimeOfDay(hour: initial.hour, minute: initial.minute),
     );
 
     if (selected != null) {
-      final base = _dueDate ?? DateTime.now();
+      final base = _startDateTime ?? DateTime.now();
       setState(() {
-        _dueDate = DateTime(
+        _startDateTime = DateTime(
           base.year,
           base.month,
           base.day,
@@ -118,12 +124,77 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
           selected.minute,
         );
       });
+      _normalizeEndAfterStart();
       _persistDraft();
     }
   }
 
+  Future<void> _pickEndDate() async {
+    final now = DateTime.now();
+    final current = _endDateTime ?? _startDateTime ?? now;
+    final selected = await showDatePicker(
+      context: context,
+      firstDate: DateTime(now.year - 1),
+      lastDate: DateTime(now.year + 20),
+      initialDate: current,
+    );
+
+    if (selected != null) {
+      final existing = _endDateTime ?? (_startDateTime ?? now).add(const Duration(hours: 1));
+      setState(() {
+        _endDateTime = DateTime(
+          selected.year,
+          selected.month,
+          selected.day,
+          existing.hour,
+          existing.minute,
+        );
+      });
+      _normalizeEndAfterStart();
+      _persistDraft();
+    }
+  }
+
+  Future<void> _pickEndTime() async {
+    final initial = _endDateTime ?? (_startDateTime ?? DateTime.now()).add(const Duration(hours: 1));
+    final selected = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: initial.hour, minute: initial.minute),
+    );
+
+    if (selected != null) {
+      final base = _endDateTime ?? (_startDateTime ?? DateTime.now());
+      setState(() {
+        _endDateTime = DateTime(
+          base.year,
+          base.month,
+          base.day,
+          selected.hour,
+          selected.minute,
+        );
+      });
+      _normalizeEndAfterStart();
+      _persistDraft();
+    }
+  }
+
+  void _normalizeEndAfterStart() {
+    if (_startDateTime == null) {
+      return;
+    }
+    if (_endDateTime == null || !_endDateTime!.isAfter(_startDateTime!)) {
+      _endDateTime = _startDateTime!.add(const Duration(hours: 1));
+    }
+  }
+
   Future<void> _save() async {
-    if (_isSaving || !_formKey.currentState!.validate() || _dueDate == null) {
+    if (_isSaving || !_formKey.currentState!.validate() || _startDateTime == null || _endDateTime == null) {
+      return;
+    }
+    if (!_endDateTime!.isAfter(_startDateTime!)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('End time must be after start time.')),
+      );
       return;
     }
 
@@ -137,7 +208,9 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
           original.copyWith(
             title: _titleController.text.trim(),
             description: _descriptionController.text.trim(),
-            dueDate: _dueDate,
+            dueDate: _endDateTime,
+            startDateTime: _startDateTime,
+            endDateTime: _endDateTime,
             status: _status,
             blockedByTaskId: _blockedByTaskId,
             clearBlockedBy: _blockedByTaskId == null,
@@ -147,7 +220,8 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
         await notifier.createTask(
           title: _titleController.text.trim(),
           description: _descriptionController.text.trim(),
-          dueDate: _dueDate!,
+          startDateTime: _startDateTime!,
+          endDateTime: _endDateTime!,
           status: _status,
           blockedByTaskId: _blockedByTaskId,
         );
@@ -202,39 +276,72 @@ class _TaskFormScreenState extends ConsumerState<TaskFormScreen> {
             const SizedBox(height: 14),
             InkWell(
               borderRadius: BorderRadius.circular(14),
-              onTap: _pickDueDate,
+              onTap: _pickStartDate,
               child: InputDecorator(
                 decoration: const InputDecoration(
-                  labelText: 'Due Date',
+                  labelText: 'Start Date',
                   suffixIcon: Icon(Icons.calendar_today_rounded),
                 ),
                 child: Text(
-                  _dueDate == null ? 'Select date' : DateFormat.yMMMMd().format(_dueDate!),
+                  _startDateTime == null ? 'Select date' : DateFormat.yMMMMd().format(_startDateTime!),
                   style: Theme.of(context).textTheme.bodyLarge,
                 ),
               ),
             ),
-            if (_dueDate == null)
+            if (_startDateTime == null)
               Padding(
                 padding: const EdgeInsets.only(top: 8, left: 12),
                 child: Text(
-                  'Due date is required',
+                  'Start date is required',
                   style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
                 ),
               ),
             const SizedBox(height: 14),
             InkWell(
               borderRadius: BorderRadius.circular(14),
-              onTap: _pickDueTime,
+              onTap: _pickStartTime,
               child: InputDecorator(
                 decoration: const InputDecoration(
-                  labelText: 'Due Time Slot',
+                  labelText: 'Start Time',
                   suffixIcon: Icon(Icons.schedule_rounded),
                 ),
                 child: Text(
-                  _dueDate == null
+                  _startDateTime == null
                       ? 'Select time'
-                      : TimeOfDay(hour: _dueDate!.hour, minute: _dueDate!.minute)
+                      : TimeOfDay(hour: _startDateTime!.hour, minute: _startDateTime!.minute)
+                          .format(context),
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: _pickEndDate,
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'End Date',
+                  suffixIcon: Icon(Icons.event_rounded),
+                ),
+                child: Text(
+                  _endDateTime == null ? 'Select date' : DateFormat.yMMMMd().format(_endDateTime!),
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: _pickEndTime,
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'End Time',
+                  suffixIcon: Icon(Icons.more_time_rounded),
+                ),
+                child: Text(
+                  _endDateTime == null
+                      ? 'Select time'
+                      : TimeOfDay(hour: _endDateTime!.hour, minute: _endDateTime!.minute)
                           .format(context),
                   style: Theme.of(context).textTheme.bodyLarge,
                 ),
