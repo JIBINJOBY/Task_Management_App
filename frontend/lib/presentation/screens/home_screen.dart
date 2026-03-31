@@ -54,8 +54,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final visibleTasks = ref.watch(visibleTasksProvider);
     final allTasks = tasksAsync.asData?.value ?? const <Task>[];
     final searchQuery = ref.watch(rawSearchQueryProvider);
-    final selectedFilter = ref.watch(filterStatusProvider);
-    final selectedSpecial = ref.watch(filterSpecialProvider);
+    final selectedFilter = ref.watch(taskListFilterProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -90,37 +89,33 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
                 const SizedBox(width: 10),
                 SizedBox(
-                  width: 150,
-                  child: DropdownButtonFormField<TaskStatus?>(
+                  width: 190,
+                  child: DropdownButtonFormField<TaskListFilter>(
                     initialValue: selectedFilter,
                     decoration: const InputDecoration(labelText: 'Filter'),
-                    items: [
-                      const DropdownMenuItem<TaskStatus?>(value: null, child: Text('All')),
-                      ...TaskStatus.values.map(
-                        (status) => DropdownMenuItem<TaskStatus?>(value: status, child: Text(status.label)),
-                      ),
-                    ],
-                    onChanged: (value) => ref.read(filterStatusProvider.notifier).set(value),
+                    items: TaskListFilter.values
+                        .map(
+                          (filter) => DropdownMenuItem<TaskListFilter>(
+                            value: filter,
+                            child: Text(filter.label),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        ref.read(taskListFilterProvider.notifier).set(value);
+                      }
+                    },
                   ),
                 ),
                 const SizedBox(width: 10),
-                SizedBox(
-                  width: 180,
-                  child: DropdownButtonFormField<SpecialFilter>(
-                    initialValue: selectedSpecial,
-                    decoration: const InputDecoration(labelText: 'Completion'),
-                    items: const [
-                      DropdownMenuItem(value: SpecialFilter.all, child: Text('All')),
-                      DropdownMenuItem(
-                        value: SpecialFilter.notCompleted,
-                        child: Text('Not Completed'),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) {
-                        ref.read(filterSpecialProvider.notifier).set(value);
-                      }
-                    },
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      '${visibleTasks.length} task(s)',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
                   ),
                 ),
               ],

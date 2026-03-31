@@ -95,18 +95,38 @@ class TaskNotifier extends AsyncNotifier<List<Task>> {
   }
 }
 
-final filterStatusProvider =
-    NotifierProvider<FilterStatusNotifier, TaskStatus?>(FilterStatusNotifier.new);
 final rawSearchQueryProvider =
     NotifierProvider<RawSearchQueryNotifier, String>(RawSearchQueryNotifier.new);
 final debouncedSearchQueryProvider =
     NotifierProvider<DebouncedSearchQueryNotifier, String>(DebouncedSearchQueryNotifier.new);
 
-class FilterStatusNotifier extends Notifier<TaskStatus?> {
-  @override
-  TaskStatus? build() => null;
+enum TaskListFilter { all, todo, inProgress, completed, notCompleted }
 
-  void set(TaskStatus? status) => state = status;
+extension TaskListFilterX on TaskListFilter {
+  String get label {
+    switch (this) {
+      case TaskListFilter.all:
+        return 'All';
+      case TaskListFilter.todo:
+        return 'To-Do';
+      case TaskListFilter.inProgress:
+        return 'In Progress';
+      case TaskListFilter.completed:
+        return 'Completed';
+      case TaskListFilter.notCompleted:
+        return 'Not Completed';
+    }
+  }
+}
+
+final taskListFilterProvider =
+    NotifierProvider<TaskListFilterNotifier, TaskListFilter>(TaskListFilterNotifier.new);
+
+class TaskListFilterNotifier extends Notifier<TaskListFilter> {
+  @override
+  TaskListFilter build() => TaskListFilter.all;
+
+  void set(TaskListFilter filter) => state = filter;
 }
 
 class RawSearchQueryNotifier extends Notifier<String> {
@@ -123,36 +143,22 @@ class DebouncedSearchQueryNotifier extends Notifier<String> {
   void set(String value) => state = value;
 }
 
-enum SpecialFilter { all, notCompleted }
-
-final filterSpecialProvider =
-    NotifierProvider<SpecialFilterNotifier, SpecialFilter>(SpecialFilterNotifier.new);
-
-class SpecialFilterNotifier extends Notifier<SpecialFilter> {
-  @override
-  SpecialFilter build() => SpecialFilter.all;
-
-  void set(SpecialFilter value) => state = value;
-}
-
 final visibleTasksProvider = Provider<List<Task>>((ref) {
   final tasksAsync = ref.watch(allTasksProvider);
-  final statusFilter = ref.watch(filterStatusProvider);
-  final specialFilter = ref.watch(filterSpecialProvider);
+  final filter = ref.watch(taskListFilterProvider);
   final query = ref.watch(debouncedSearchQueryProvider).trim().toLowerCase();
 
   final tasks = tasksAsync.asData?.value ?? const <Task>[];
   final now = DateTime.now();
 
   return tasks.where((task) {
-    if (specialFilter == SpecialFilter.notCompleted) {
-      final overdueNotDone = task.status != TaskStatus.done && task.endDateTime.isBefore(now);
-      if (!overdueNotDone) {
-        return false;
-      }
-    }
-
-    final statusMatch = statusFilter == null || task.status == statusFilter;
+    final statusMatch = switch (filter) {
+      TaskListFilter.all => true,
+      TaskListFilter.todo => task.status == TaskStatus.todo,
+      TaskListFilter.inProgress => task.status == TaskStatus.inProgress,
+      TaskListFilter.completed => task.status == TaskStatus.done,
+      TaskListFilter.notCompleted => task.status != TaskStatus.done && task.endDateTime.isBefore(now),
+    };
     final searchMatch = query.isEmpty || task.title.toLowerCase().contains(query);
     return statusMatch && searchMatch;
   }).toList();
